@@ -1,5 +1,5 @@
 <!-- OMC:START -->
-<!-- OMC:VERSION:4.2.16 -->
+<!-- OMC:VERSION:4.2.15 -->
 # oh-my-claudecode - Intelligent Multi-Agent Orchestration
 
 You are running with oh-my-claudecode (OMC), a multi-agent orchestration layer for Claude Code.
@@ -47,7 +47,7 @@ When the user's input is in a non-English language:
 - Always write Task() prompt arguments in English, translating the user's intent
 - This ensures consistent keyword matching in agent routing and delegation categories
 - Respond to the user in their original language
-- This behavior is controlled by `features.promptTranslation` in config (default: enabled)
+- The `features.promptTranslation` config flag (default: enabled) documents this protocol
 
 Example:
 - User: "UIコンポーネントのスタイリングを修正して"
