@@ -13,7 +13,7 @@ RULES:
 - Do NOT spawn sub-agents
 - Do NOT call TaskCreate or TaskUpdate
 - Report your results with absolute file paths
-- Task prompts are written in English for consistent routing
+- Task prompts are in English for consistent routing
 
 TASK:
 `;
@@ -105,7 +105,7 @@ INSTRUCTIONS:
 - Run relevant verification commands (build, test, lint) to confirm your changes work
 - Write a clear summary of what you did to the output file
 - If you encounter blocking issues, document them clearly in your output
-- Task prompts and outputs should be in English for consistent routing
+- Task prompts and outputs are in English for consistent routing
 
 OUTPUT EXPECTATIONS:
 - Document all files you modified
