@@ -1064,6 +1064,7 @@ Examples:
       console.log(`  AST Tools:               ${features.astTools ? chalk.green('enabled') : chalk.gray('disabled')}`);
       console.log(`  Continuation Enforcement:${features.continuationEnforcement ? chalk.green('enabled') : chalk.gray('disabled')}`);
       console.log(`  Auto Context Injection:  ${features.autoContextInjection ? chalk.green('enabled') : chalk.gray('disabled')}`);
+      console.log(`  Prompt Translation:      ${features.promptTranslation ? chalk.green('enabled') : chalk.gray('disabled')}`);
     }
 
     console.log(chalk.blue('\nMCP Servers:'));
