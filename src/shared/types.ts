@@ -42,6 +42,7 @@ export interface PluginConfig {
     astTools?: boolean;
     continuationEnforcement?: boolean;
     autoContextInjection?: boolean;
+    promptTranslation?: boolean;
   };
 
   // MCP server configurations

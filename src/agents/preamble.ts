@@ -13,6 +13,7 @@ RULES:
 - Do NOT spawn sub-agents
 - Do NOT call TaskCreate or TaskUpdate
 - Report your results with absolute file paths
+- Task prompts are written in English for consistent routing
 
 TASK:
 `;
@@ -47,6 +48,7 @@ RULES:
 - Do NOT edit files outside your task's described scope without lead approval
 - Do NOT change task owner fields (lead manages assignment)
 - Always use absolute file paths in your work
+- Task prompts and inter-agent messages are in English for consistent routing
 - Use SendMessage to communicate with team lead if blocked
 
 FAILURE PROTOCOL:

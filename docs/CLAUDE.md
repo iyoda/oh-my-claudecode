@@ -42,6 +42,19 @@ Examples:
 - `Task(subagent_type="oh-my-claudecode:executor", model="opus", prompt="Refactor auth/session handling across the API layer.")`
 </model_routing>
 
+<agent_protocol_language>
+When the user's input is in a non-English language:
+- Always write Task() prompt arguments in English, translating the user's intent
+- This ensures consistent keyword matching in agent routing and delegation categories
+- Respond to the user in their original language
+- This behavior is controlled by `features.promptTranslation` in config (default: enabled)
+
+Example:
+- User: "UIコンポーネントのスタイリングを修正して"
+- Task(prompt="Fix the styling of UI components...") ← English
+- Response to user: Japanese
+</agent_protocol_language>
+
 <path_write_rules>
 Direct writes are appropriate for orchestration/config surfaces:
 - `~/.claude/**`, `.omc/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md`

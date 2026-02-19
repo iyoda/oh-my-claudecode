@@ -38,7 +38,8 @@ export const DEFAULT_CONFIG: PluginConfig = {
     lspTools: true,   // Real LSP integration with language servers
     astTools: true,   // Real AST tools using ast-grep
     continuationEnforcement: true,
-    autoContextInjection: true
+    autoContextInjection: true,
+    promptTranslation: true
   },
   mcpServers: {
     exa: { enabled: true },
@@ -210,6 +211,13 @@ export function loadEnvConfig(): Partial<PluginConfig> {
         maxBackgroundTasks: maxTasks
       };
     }
+  }
+
+  if (process.env.OMC_PROMPT_TRANSLATION !== undefined) {
+    config.features = {
+      ...config.features,
+      promptTranslation: process.env.OMC_PROMPT_TRANSLATION === 'true'
+    };
   }
 
   // Routing configuration from environment
@@ -449,7 +457,12 @@ export function generateConfigSchema(): object {
           lspTools: { type: 'boolean', default: true },
           astTools: { type: 'boolean', default: true },
           continuationEnforcement: { type: 'boolean', default: true },
-          autoContextInjection: { type: 'boolean', default: true }
+          autoContextInjection: { type: 'boolean', default: true },
+          promptTranslation: {
+            type: 'boolean',
+            default: true,
+            description: 'Translate non-English prompts to English for agent delegation (English agent protocol)'
+          }
         }
       },
       mcpServers: {
