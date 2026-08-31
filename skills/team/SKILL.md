@@ -897,7 +897,7 @@ Optional settings live in `.claude/omc.jsonc` (project) or `~/.config/claude-omc
 
 > **Scope:** Applies to `/team` only. Task-based delegation uses `delegationRouting` (see separate docs). The two systems coexist by design.
 
-Declare which provider (`claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`) and which model tier should back each canonical role. Routing is resolved **once** at team creation and persisted in `TeamConfig.resolved_routing`. A configured role route may override the worker-spec provider. Without a matching role configuration, direct external worker specs keep their provider; an inferred role alone does not reroute them.
+Declare which provider (`claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`) and which model tier should back each canonical role. Routing is resolved **once** at team creation and persisted in `TeamConfig.resolved_routing`. At initial startup, a matching configured role route takes precedence over the worker-spec provider, whether the role was explicit or inferred. Without a matching role configuration, direct external worker specs keep their provider; inference alone does not reroute them.
 
 ### Example — user target mapping
 
@@ -928,7 +928,7 @@ Declare which provider (`claude`, `codex`, `gemini`, `antigravity`, `grok`, `cur
 | `debugger`      | cursor          | cursor-agent default      |
 | `critic`        | codex           | codex default             |
 | `code-reviewer` | gemini          | gemini default            |
-| `test-engineer` | antigravity     | antigravity default       |
+| `test-engineer` | gemini          | gemini default             |
 
 ### Canonical roles
 
@@ -956,7 +956,7 @@ Precedence: `OMC_TEAM_ROLE_OVERRIDES` > `.claude/omc.jsonc` (project) > `~/.conf
 
 ### Missing provider CLIs
 
-Before creating Team state or multiplexer resources, startup validates every provider declared by the worker specs and every primary provider in the resolved routing snapshot. A missing, relative, or untrusted binary aborts startup with `cli_binary_preflight_failed`; the runtime does not replace that provider with Claude. `buildResolvedRoutingSnapshot` still persists a precomputed Claude `fallback` entry for each role, but the current launch path does not select it after provider preflight fails. Probe provider availability with `omc doctor --team-routing`.
+Before creating Team state or multiplexer resources, startup validates every provider declared by the worker specs and every primary provider in the resolved routing snapshot. The snapshot covers every canonical role, not only roles used by startup tasks, so providers configured for unused roles are also preflighted. Unrouted role primaries default to Claude, which means Claude is preflighted by default even when all requested workers are direct external providers. A missing, relative, or untrusted binary aborts startup with `cli_binary_preflight_failed`; the runtime does not replace that provider with Claude. `buildResolvedRoutingSnapshot` constructs a precomputed Claude `fallback` entry for every canonical role. Successful team creation stores the complete snapshot in `TeamConfig`; a startup preflight failure occurs before that config is written. No current startup or scale-up launch path selects the fallback entry. Probe provider availability with `omc doctor --team-routing`.
 
 ### Stickiness — resolved once, reused everywhere
 
@@ -964,7 +964,7 @@ Resolved routing is immutable per team. Editing config mid-team-lifetime does no
 
 ### Zero-config behavior
 
-An empty `team.roleRouting` preserves pre-patch behavior: every worker is Claude, model tiers follow `routing.tierModels`, and `/team 3:executor ...` still spawns three Claude Sonnet executors.
+With empty `team.roleRouting`, canonical role defaults resolve to Claude, model tiers follow `routing.tierModels`, and `/team 3:executor ...` still spawns three Claude Sonnet executors. Direct external worker specs remain on their requested provider.
 
 ## State Cleanup
 

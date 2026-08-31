@@ -629,13 +629,18 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('Only when no tmux-compatible binary is available');
     });
 
-    it('documents fail-before-launch provider preflight without promising Claude substitution', () => {
+    it('guards the documented provider-preflight behavior and snapshot lifecycle', () => {
       const skill = getBuiltinSkill('team');
       expect(skill).toBeDefined();
+      expect(skill?.template).toContain('snapshot covers every canonical role');
+      expect(skill?.template).toContain('providers configured for unused roles are also preflighted');
+      expect(skill?.template).toContain('Claude is preflighted by default');
       expect(skill?.template).toContain('aborts startup with `cli_binary_preflight_failed`');
-      expect(skill?.template).toContain('does not replace that provider with Claude');
-      expect(skill?.template).toContain('does not select it after provider preflight fails');
-      expect(skill?.template).not.toContain('can fall back to Claude');
+      expect(skill?.template).toContain('constructs a precomputed Claude `fallback` entry');
+      expect(skill?.template).toContain('a startup preflight failure occurs before that config is written');
+      expect(skill?.template).toContain('No current startup or scale-up launch path selects the fallback entry');
+      expect(skill?.template).not.toContain('runtime falls back to a deterministic Claude assignment');
+      expect(skill?.template).not.toContain('every worker is Claude');
       expect(skill?.template).toContain('omc doctor --team-routing');
     });
 
