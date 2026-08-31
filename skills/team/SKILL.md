@@ -897,7 +897,7 @@ Optional settings live in `.claude/omc.jsonc` (project) or `~/.config/claude-omc
 
 > **Scope:** Applies to `/team` only. Task-based delegation uses `delegationRouting` (see separate docs). The two systems coexist by design.
 
-Declare which provider (`claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`) and which model tier should back each canonical role. Routing is resolved **once** at team creation and persisted in `TeamConfig.resolved_routing` — spawn, scale-up, and restart all read from the snapshot, so a role's worker CLI and model are stable for the lifetime of the team.
+Declare which provider (`claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`) and which model tier should back each canonical role. Routing is resolved **once** at team creation and persisted in `TeamConfig.resolved_routing`. A configured role route may override the worker-spec provider. Without a matching role configuration, direct external worker specs keep their provider; an inferred role alone does not reroute them.
 
 ### Example — user target mapping
 
@@ -954,13 +954,13 @@ OMC_TEAM_ROLE_OVERRIDES='{"critic":{"provider":"codex"},"code-reviewer":{"provid
 
 Precedence: `OMC_TEAM_ROLE_OVERRIDES` > `.claude/omc.jsonc` (project) > `~/.config/claude-omc/config.jsonc` (user) > built-in defaults. Invalid JSON logs a warning and is ignored — env overrides are best-effort and never abort the run.
 
-### Fallback when a CLI is missing
+### Missing provider CLIs
 
-If the CLI for a configured provider is absent from `PATH` at spawn time, `buildLaunchArgs()` throws, the team lead emits a visible team/conversation warning, and the runtime falls back to a deterministic Claude assignment pre-computed by `buildResolvedRoutingSnapshot` (same tier + same agent, `provider: "claude"`) only when the Claude CLI is resolvable. If the Claude CLI is unavailable, no runnable fallback exists: orchestration/startup is unavailable and the warning stays loud rather than claiming a fallback. Probe provider availability with `omc doctor --team-routing`.
+Before creating Team state or multiplexer resources, startup validates every provider declared by the worker specs and every primary provider in the resolved routing snapshot. A missing, relative, or untrusted binary aborts startup with `cli_binary_preflight_failed`; the runtime does not replace that provider with Claude. `buildResolvedRoutingSnapshot` still persists a precomputed Claude `fallback` entry for each role, but the current launch path does not select it after provider preflight fails. Probe provider availability with `omc doctor --team-routing`.
 
 ### Stickiness — resolved once, reused everywhere
 
-Resolved routing is immutable per team. Editing config mid-team-lifetime does not affect running teams; a new `/team` invocation picks up the new mapping. This guarantees that spawn, scale-up, and worker-restart all see identical routing, including across worktree detaches (the snapshot travels with `TeamConfig`).
+Resolved routing is immutable per team. Editing config mid-team-lifetime does not affect that snapshot; a new `/team` invocation picks up the new mapping. Initial startup consults it for explicitly assigned or configured roles. Scale-up consults it when the owned task has a configured route, or when an explicitly assigned role is being added through the Claude caller path; otherwise scale-up retains its caller provider. Restart and recovery reuse the persisted worker launch identity rather than re-reading live routing configuration.
 
 ### Zero-config behavior
 

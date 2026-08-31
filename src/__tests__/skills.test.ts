@@ -629,12 +629,13 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('Only when no tmux-compatible binary is available');
     });
 
-    it('conditions team Claude fallback guidance on Claude CLI availability', () => {
+    it('documents fail-before-launch provider preflight without promising Claude substitution', () => {
       const skill = getBuiltinSkill('team');
       expect(skill).toBeDefined();
-      expect(skill?.template).toContain('only when the Claude CLI is resolvable');
-      expect(skill?.template).toContain('no runnable fallback exists');
-      expect(skill?.template).toContain('orchestration/startup is unavailable');
+      expect(skill?.template).toContain('aborts startup with `cli_binary_preflight_failed`');
+      expect(skill?.template).toContain('does not replace that provider with Claude');
+      expect(skill?.template).toContain('does not select it after provider preflight fails');
+      expect(skill?.template).not.toContain('can fall back to Claude');
       expect(skill?.template).toContain('omc doctor --team-routing');
     });
 
