@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ed454ddb07bf3a10245fdbae0e493ca52719edf4",
-    "sourceSha256": "4a683fe22d66efe2644c7216e598666f8c4554fe11bbb893360d6f0bef292e5b",
+    "head": "47b61312aaee19f36004a53052299b85f08caf23",
+    "sourceSha256": "52b69fdffdbb189d3a16a8252defe9bed5d70759b36f35a201f12934a484751b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ed454ddb07bf3a10245fdbae0e493ca52719edf4",
-  "sourceSha256": "4a683fe22d66efe2644c7216e598666f8c4554fe11bbb893360d6f0bef292e5b",
+  "head": "47b61312aaee19f36004a53052299b85f08caf23",
+  "sourceSha256": "52b69fdffdbb189d3a16a8252defe9bed5d70759b36f35a201f12934a484751b",
   "counts": {
     "public": {
       "skills": 48,
@@ -28,8 +28,8 @@
       "toolFiles": 65,
       "libFiles": 49,
       "templateHooks": 25,
-      "srcFiles": 1432,
-      "total": 1457
+      "srcFiles": 1436,
+      "total": 1461
     },
     "generated": {
       "distFiles": 5471,
@@ -813,6 +813,7 @@
       "scripts/eval-autoresearch-timed-json.mjs",
       "scripts/find-node.sh",
       "scripts/generate-featured-contributors.ts",
+      "scripts/generate-historical-install-ownership.mjs",
       "scripts/generate-inventory-graph.mjs",
       "scripts/generate-prompt-projections.mjs",
       "scripts/generate-skill-entitlements.mjs",
@@ -36201,6 +36202,11 @@
         "path": "scripts/generate-featured-contributors.ts"
       },
       {
+        "id": "scripts/generate-historical-install-ownership.mjs",
+        "kind": "script",
+        "path": "scripts/generate-historical-install-ownership.mjs"
+      },
+      {
         "id": "scripts/generate-inventory-graph.mjs",
         "kind": "script",
         "path": "scripts/generate-inventory-graph.mjs"
@@ -37451,6 +37457,16 @@
         "path": "src/__tests__/file-lock.test.ts"
       },
       {
+        "id": "src/__tests__/fixtures/historical-install/session-end.v5.6.0.mjs.txt",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/historical-install/session-end.v5.6.0.mjs.txt"
+      },
+      {
+        "id": "src/__tests__/fixtures/historical-install/writer.v5.7.20.md.txt",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/historical-install/writer.v5.7.20.md.txt"
+      },
+      {
         "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs"
@@ -37849,6 +37865,11 @@
         "id": "src/__tests__/installer-plugin-agents.test.ts",
         "kind": "src",
         "path": "src/__tests__/installer-plugin-agents.test.ts"
+      },
+      {
+        "id": "src/__tests__/installer-user-asset-preservation.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/installer-user-asset-preservation.test.ts"
       },
       {
         "id": "src/__tests__/installer-version-guard.test.ts",
@@ -42216,6 +42237,11 @@
         "path": "src/installer/historical-agent-ownership.ts"
       },
       {
+        "id": "src/installer/historical-hook-ownership.ts",
+        "kind": "src",
+        "path": "src/installer/historical-hook-ownership.ts"
+      },
+      {
         "id": "src/installer/hooks.ts",
         "kind": "src",
         "path": "src/installer/hooks.ts"
@@ -45705,6 +45731,31 @@
       {
         "from": "scripts/generate-featured-contributors.ts",
         "to": "src/lib/featured-contributors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/generate-historical-install-ownership.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/generate-historical-install-ownership.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/generate-historical-install-ownership.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/generate-historical-install-ownership.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/generate-historical-install-ownership.mjs",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -50618,6 +50669,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/installer-hooks-merge.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/installer-hud-skip.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -50719,6 +50775,36 @@
       },
       {
         "from": "src/__tests__/installer-plugin-agents.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/installer-user-asset-preservation.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/installer-user-asset-preservation.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/installer-user-asset-preservation.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/installer-user-asset-preservation.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/installer-user-asset-preservation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/installer-user-asset-preservation.test.ts",
         "to": "src/installer/index.ts",
         "kind": "imports"
       },
@@ -72539,6 +72625,11 @@
       },
       {
         "from": "src/installer/__tests__/standalone-hook-reconcile.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/standalone-hook-reconcile.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -72668,6 +72759,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/installer/historical-hook-ownership.ts",
+        "to": "src/installer/historical-agent-ownership.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/installer/hooks.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -72749,12 +72845,22 @@
       },
       {
         "from": "src/installer/index.ts",
+        "to": "src/installer/historical-hook-ownership.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/index.ts",
         "to": "src/installer/hooks.ts",
         "kind": "imports"
       },
       {
         "from": "src/installer/index.ts",
         "to": "src/installer/mcp-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/index.ts",
+        "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
@@ -86579,12 +86685,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7577,
-      "edgeCount": 8345,
-      "importEdgeCount": 6981,
+      "nodeCount": 7582,
+      "edgeCount": 8361,
+      "importEdgeCount": 6995,
       "registerEdgeCount": 69
     }
   },
-  "inventorySha256": "1efedd195d2f902dd7fc23122339a54c0213257929f539ffe6bc5c1fe3681aa7",
-  "manifestSha256": "11d8728a14f389c2a2255bc0a15c8f36198adbc7d0b3577962fe1f397a804ed0"
+  "inventorySha256": "9915375ec761593984d493641586d7a970a3e322ac1c7025be1f355b3c132722",
+  "manifestSha256": "e5ffb37369792c14258a7313336885fb4c35f02c5755790e88522be17cc86f05"
 }

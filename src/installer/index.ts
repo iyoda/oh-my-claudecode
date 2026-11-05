@@ -34,6 +34,8 @@ import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { analyzeLegacyClaudeMd, OMC_END_MARKER, OMC_START_MARKER, parseClaudeMdMarkers, removeClaudeMdRanges } from './claude-md-analysis.js';
 import { executeClaudeMdTransaction, isClaudeMdEnabledInConfig } from './claude-md-transaction.js';
 import { HISTORICAL_AGENT_OWNERSHIP, type HistoricalAgentOwnership } from './historical-agent-ownership.js';
+import { HISTORICAL_HOOK_OWNERSHIP } from './historical-hook-ownership.js';
+import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 
 /** Claude Code configuration directory */
@@ -46,6 +48,7 @@ export const HUD_DIR = join(CLAUDE_CONFIG_DIR, 'hud');
 export const SETTINGS_FILE = join(CLAUDE_CONFIG_DIR, 'settings.json');
 export const VERSION_FILE = join(CLAUDE_CONFIG_DIR, '.omc-version.json');
 const OMC_MANAGED_SKILL_MARKER = '.omc-managed';
+const MANAGED_ASSET_MANIFEST_FILE = join(CLAUDE_CONFIG_DIR, '.omc-managed-assets.json');
 const PLUGIN_FULL_SKILL_BODIES_DIR = 'skill-bodies';
 const PLUGIN_COMPACT_SKILL_SHIM_MARKER = '<!-- OMC:COMPACT-PLUGIN-SKILL -->';
 
@@ -82,11 +85,11 @@ function isSafeAgentFilename(filename: string): boolean {
   return /^[a-z0-9-]+\.md$/.test(filename);
 }
 
-function isValidHistoricalAgent(record: unknown): record is HistoricalAgentOwnership {
+function isValidHistoricalRecord(record: unknown, filenamePattern: RegExp): record is HistoricalAgentOwnership {
   if (!record || typeof record !== 'object') return false;
   const candidate = record as HistoricalAgentOwnership;
   return typeof candidate.filename === 'string'
-    && isSafeAgentFilename(candidate.filename)
+    && filenamePattern.test(candidate.filename)
     && Number.isSafeInteger(candidate.byteLength)
     && candidate.byteLength > 0
     && typeof candidate.sha256 === 'string'
@@ -94,22 +97,31 @@ function isValidHistoricalAgent(record: unknown): record is HistoricalAgentOwner
     && typeof candidate.gitBlob === 'string'
     && /^[a-f0-9]{40}$/.test(candidate.gitBlob)
     && typeof candidate.firstReleaseTag === 'string'
-    && /^v4\.\d+\.\d+$/.test(candidate.firstReleaseTag)
+    && /^v[45]\.\d+\.\d+$/.test(candidate.firstReleaseTag)
     && typeof candidate.lastReleaseTag === 'string'
-    && /^v4\.\d+\.\d+$/.test(candidate.lastReleaseTag);
+    && /^v[45]\.\d+\.\d+$/.test(candidate.lastReleaseTag);
 }
 
-const HISTORICAL_AGENT_HASHES_BY_FILENAME = new Map<string, Set<string>>();
-for (const record of HISTORICAL_AGENT_OWNERSHIP) {
-  if (!isValidHistoricalAgent(record)) continue;
-  const hashes = HISTORICAL_AGENT_HASHES_BY_FILENAME.get(record.filename) ?? new Set<string>();
-  hashes.add(`${record.byteLength}:${record.sha256}`);
-  HISTORICAL_AGENT_HASHES_BY_FILENAME.set(record.filename, hashes);
+function indexHistoricalRecords(records: readonly HistoricalAgentOwnership[], filenamePattern: RegExp): Map<string, Set<string>> {
+  const fingerprintsByFilename = new Map<string, Set<string>>();
+  for (const record of records) {
+    if (!isValidHistoricalRecord(record, filenamePattern)) continue;
+    const fingerprints = fingerprintsByFilename.get(record.filename) ?? new Set<string>();
+    fingerprints.add(`${record.byteLength}:${record.sha256}`);
+    fingerprintsByFilename.set(record.filename, fingerprints);
+  }
+  return fingerprintsByFilename;
+}
+
+const HISTORICAL_AGENT_HASHES_BY_FILENAME = indexHistoricalRecords(HISTORICAL_AGENT_OWNERSHIP, /^[a-z0-9-]+\.md$/);
+const HISTORICAL_HOOK_HASHES_BY_FILENAME = indexHistoricalRecords(HISTORICAL_HOOK_OWNERSHIP, /^[a-z0-9-]+\.mjs$/);
+
+function assetFingerprint(content: Buffer): string {
+  return `${content.length}:${createHash('sha256').update(content).digest('hex')}`;
 }
 
 function hasAuthenticatedHistoricalAgentBytes(filename: string, content: Buffer): boolean {
-  const hashes = HISTORICAL_AGENT_HASHES_BY_FILENAME.get(filename);
-  return hashes?.has(`${content.length}:${createHash('sha256').update(content).digest('hex')}`) ?? false;
+  return HISTORICAL_AGENT_HASHES_BY_FILENAME.get(filename)?.has(assetFingerprint(content)) ?? false;
 }
 
 function readRegularAgentFile(filepath: string): { content: Buffer; dev: number; ino: number; size: number; mtimeMs: number } | null {
@@ -130,6 +142,55 @@ function hasUnchangedRegularAgentFile(filepath: string, previous: { content: Buf
     && current.size === previous.size
     && current.mtimeMs === previous.mtimeMs
     && current.content.equals(previous.content);
+}
+
+type StandaloneAssetOwnership = 'absent' | 'omc' | 'user';
+type ManagedAssetManifest = Record<string, string>;
+
+function readManagedAssetManifest(): ManagedAssetManifest {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(MANAGED_ASSET_MANIFEST_FILE, 'utf-8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as ManagedAssetManifest : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeManagedAssetManifest(manifest: ManagedAssetManifest, log: (msg: string) => void): void {
+  try {
+    atomicWriteJsonSync(MANAGED_ASSET_MANIFEST_FILE, manifest);
+  } catch (error) {
+    log(`  Warning: Could not record installed files in ${MANAGED_ASSET_MANIFEST_FILE}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function isRecordedOmcAgent(filename: string, content: Buffer, manifest: ManagedAssetManifest): boolean {
+  return hasAuthenticatedHistoricalAgentBytes(filename, content)
+    || manifest[`agents/${filename}`] === assetFingerprint(content);
+}
+
+function classifyStandaloneAsset(
+  targetPath: string,
+  manifestKey: string,
+  shipped: Buffer | null,
+  manifest: ManagedAssetManifest,
+  historicalFingerprints: Set<string> | undefined,
+): StandaloneAssetOwnership {
+  try {
+    if (!lstatSync(targetPath, { throwIfNoEntry: false })) return 'absent';
+  } catch {
+    return 'user';
+  }
+  const target = readRegularAgentFile(targetPath);
+  if (!target) return 'user';
+  const fingerprint = assetFingerprint(target.content);
+  return shipped?.equals(target.content) || manifest[manifestKey] === fingerprint || historicalFingerprints?.has(fingerprint)
+    ? 'omc'
+    : 'user';
+}
+
+function classifyStandaloneHookScript(filename: string, shipped: Buffer | null, manifest: ManagedAssetManifest): StandaloneAssetOwnership {
+  return classifyStandaloneAsset(join(HOOKS_DIR, filename), `hooks/${filename}`, shipped, manifest, HISTORICAL_HOOK_HASHES_BY_FILENAME.get(filename));
 }
 
 function currentAgentsDir(): string {
@@ -437,37 +498,47 @@ function isShippedStandaloneHookPayload(targetPath: string, filename: string, lo
  * Detect whether a hook command belongs to oh-my-claudecode.
  *
  * Recognition strategy (any match is sufficient):
- * 1. Command path contains "omc" as a path/word segment (e.g. `omc-hook.mjs`, `/omc/`)
+ * 1. The command is the bare `omc` binary
  * 2. Command path contains "oh-my-claudecode"
- * 3. Command references a known OMC hook filename inside .claude/hooks/
+ * 3. Command references a known OMC hook filename inside the OMC config hooks dir
  *
  * @param command - The hook command string
  * @returns true if the command belongs to OMC
  */
 export function isOmcHook(command: string): boolean {
-  const lowerCommand = command.toLowerCase();
-  // Match "omc" as a path segment or word boundary
-  // Matches: /omc/, /omc-, omc/, -omc, _omc, omc_
-  const omcPattern = /(?:^|[\/\\_-])omc(?:$|[\/\\_-])/;
-  const fullNamePattern = /oh-my-claudecode/;
-  if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
-    return true;
-  }
-  // Check for known OMC hook filenames in .claude/hooks/ path.
-  // Handles both Unix (.claude/hooks/) and Windows (.claude\hooks\) paths.
-  const containsHooksDir = /hooks[/\\]/.test(lowerCommand);
-  const hookFilenameMatch = lowerCommand.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
-  if (containsHooksDir && hookFilenameMatch && OMC_HOOK_FILENAMES.has(hookFilenameMatch[1])) {
-    return true;
-  }
-  return false;
+  const normalized = normalizeHookCommand(command);
+  return /(?:^|\/)omc$/.test(normalized)
+    || normalized.includes('oh-my-claudecode')
+    || isStandaloneOmcHookCommand(command);
+}
+
+function normalizeHookCommand(command: string): string {
+  return command.toLowerCase().replace(/\\+/g, '/');
+}
+
+// A project's own .claude/hooks is the user's, so only home-rooted forms count.
+function isOmcConfigHooksDir(directory: string): boolean {
+  const configDir = getClaudeConfigDir();
+  const isUnder = (dir: string) => {
+    const suffix = `${normalizeHookCommand(dir)}/hooks/`;
+    const start = directory.length - suffix.length;
+    return directory.endsWith(suffix) && (start === 0 || /["'\s]/.test(directory[start - 1]));
+  };
+  let configRealpath = configDir;
+  try { configRealpath = realpathSync(configDir); } catch { /* A missing config dir has no other spelling. */ }
+  return isUnder(configDir)
+    || isUnder(configRealpath)
+    || /(?:^|["'\s])(?:~|\$\{?home\}?["']?|%userprofile%)\/\.claude\/hooks\/$/.test(directory)
+    || /\$\{?claude_config_dir(?::-[^}]*)?\}?\/hooks\/$/.test(directory);
 }
 
 function isStandaloneOmcHookCommand(command: string): boolean {
-  const lowerCommand = command.toLowerCase();
-  const containsHooksDir = /hooks[/\\]/.test(lowerCommand);
-  const hookFilenameMatch = lowerCommand.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
-  return !!(containsHooksDir && hookFilenameMatch && OMC_HOOK_FILENAMES.has(hookFilenameMatch[1]));
+  const normalized = normalizeHookCommand(command);
+  const hookFilenameMatch = normalized.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
+  if (!hookFilenameMatch || !OMC_HOOK_FILENAMES.has(hookFilenameMatch[1]) || /&&|\|\||[;|]/.test(normalized)) {
+    return false;
+  }
+  return isOmcConfigHooksDir(normalized.slice(0, hookFilenameMatch.index));
 }
 
 function getStandaloneOmcHookFilename(command: string): string | null {
@@ -476,6 +547,14 @@ function getStandaloneOmcHookFilename(command: string): string | null {
   }
   const hookFilenameMatch = command.toLowerCase().match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
   return hookFilenameMatch?.[1] ?? null;
+}
+
+function isUserOwnedHookCommand(command: string, manifest: ManagedAssetManifest): boolean {
+  const filename = getStandaloneOmcHookFilename(command);
+  if (!filename) return false;
+  const shippedPath = getShippedStandaloneHookPayloadPath(filename, 'hooks');
+  const shipped = shippedPath ? readRegularAgentFile(shippedPath)?.content ?? null : null;
+  return classifyStandaloneHookScript(filename, shipped, manifest) === 'user';
 }
 
 function collectActiveStandaloneOmcHookFilenames(hooks: Record<string, unknown>): Set<string> {
@@ -741,14 +820,18 @@ function configureInstallerSettings(
       }
     }
 
+    const shouldConfigureSettingsHooks = (!context.runningAsPlugin || !!context.allowPluginHookRefresh) && !pluginHandlesHooks;
     let legacyRemoved = 0;
-    for (const [eventType, groups] of Object.entries(existingHooks)) {
+    const managedAssetManifest = readManagedAssetManifest();
+    // mergeHookGroups owns these entries when it runs; stripping them first loses them on a skip.
+    for (const [eventType, groups] of shouldConfigureSettingsHooks ? [] : Object.entries(existingHooks)) {
       const groupList = groups as HookGroup[];
       const filtered = groupList.filter(group => {
         const isLegacy = group.hooks.every(h =>
           h.type === 'command'
           && typeof h.command === 'string'
           && isStandaloneOmcHookCommand(h.command)
+          && !isUserOwnedHookCommand(h.command, managedAssetManifest)
         );
         if (isLegacy) legacyRemoved++;
         return !isLegacy;
@@ -769,20 +852,28 @@ function configureInstallerSettings(
       pruneLegacyStandaloneHookScripts(context.log, activeStandaloneOmcHookFilenames);
     }
 
-    const shouldConfigureSettingsHooks = (!context.runningAsPlugin || !!context.allowPluginHookRefresh) && !pluginHandlesHooks;
     if (shouldConfigureSettingsHooks) {
       const desiredHooks = getHooksSettingsConfig().hooks as Record<string, HookGroup[]>;
 
       for (const [eventType, newOmcGroups] of Object.entries(desiredHooks)) {
         const currentGroups = (existingHooks[eventType] as HookGroup[] | undefined) ?? [];
-        existingHooks[eventType] = mergeHookGroups(
+        const installableGroups = newOmcGroups.filter(group =>
+          !group.hooks.some(h => isUserOwnedHookCommand(h.command, managedAssetManifest))
+        );
+        if (installableGroups.length === 0 && currentGroups.length === 0) continue;
+        const mergedGroups = mergeHookGroups(
           eventType,
           currentGroups,
-          newOmcGroups,
+          installableGroups,
           context.options,
           context.log,
           context.result,
         );
+        if (mergedGroups.length > 0) {
+          existingHooks[eventType] = mergedGroups;
+        } else {
+          delete existingHooks[eventType];
+        }
       }
     }
 
@@ -1027,14 +1118,22 @@ function ensureStandaloneHookScripts(log: (msg: string) => void): void {
     chmodSync(configDirHelperDest, 0o755);
   }
 
+  const manifest = readManagedAssetManifest();
   for (const filename of STANDALONE_HOOK_TEMPLATE_FILES) {
     const sourcePath = join(templatesDir, filename);
     const targetPath = join(HOOKS_DIR, filename);
+    const shipped = readFileSync(sourcePath);
+    if (classifyStandaloneHookScript(filename, shipped, manifest) === 'user') {
+      log(`  Warning: ${targetPath} is a user-managed entry; the bundled hook script was not installed. Remove or rename it to enable OMC's version.`);
+      continue;
+    }
     copyFileSync(sourcePath, targetPath);
     if (!isWindows()) {
       chmodSync(targetPath, 0o755);
     }
+    manifest[`hooks/${filename}`] = assetFingerprint(shipped);
   }
+  writeManagedAssetManifest(manifest, log);
 
   log('  Installed standalone hook scripts');
 }
@@ -1047,13 +1146,15 @@ export function mergeHookGroups(
   log: (msg: string) => void,
   result: InstallResult,
 ): HookGroup[] {
-  const nonOmcGroups = existingGroups.filter(group =>
-    group.hooks.some(h => h.type === 'command' && !isOmcHook(h.command))
-  );
+  const manifest = readManagedAssetManifest();
+  const isOmcEntry = (h: HookEntry) => h.type === 'command'
+    && typeof h.command === 'string'
+    && isOmcHook(h.command)
+    && !isUserOwnedHookCommand(h.command, manifest);
+  const nonOmcGroups = existingGroups.filter(group => !group.hooks.every(isOmcEntry));
   const hasNonOmcHook = nonOmcGroups.length > 0;
-  const nonOmcCommand = hasNonOmcHook
-    ? nonOmcGroups[0].hooks.find(h => h.type === 'command' && !isOmcHook(h.command))?.command ?? ''
-    : '';
+  const nonOmcEntry = nonOmcGroups[0]?.hooks.find(h => !isOmcEntry(h));
+  const nonOmcCommand = nonOmcEntry ? nonOmcEntry.command || `${nonOmcEntry.type} hook` : '';
 
   if (options.forceHooks && !options.allowPluginHookRefresh) {
     if (hasNonOmcHook) {
@@ -1071,7 +1172,10 @@ export function mergeHookGroups(
     } else {
       log(`  Updated ${eventType} hook (--force)`);
     }
-    return [...nonOmcGroups, ...newOmcGroups];
+    return [
+      ...nonOmcGroups.map(group => ({ ...group, hooks: group.hooks.filter(h => !isOmcEntry(h)) })),
+      ...newOmcGroups,
+    ];
   }
 
   // Nothing is registered for this event yet, so this is a first-time install
@@ -1086,10 +1190,16 @@ export function mergeHookGroups(
   if (hasNonOmcHook) {
     log(`  Warning: ${eventType} hook has non-OMC hook. Skipping. Use --force-hooks to override.`);
     result.hookConflicts.push({ eventType, existingCommand: nonOmcCommand });
-  } else {
-    log(`  ${eventType} hook already configured, skipping`);
+    return existingGroups;
   }
-  return existingGroups;
+
+  const registeredScripts = new Set(existingGroups.flatMap(group => group.hooks.map(h => getStandaloneOmcHookFilename(h.command))));
+  // A null script is a plugin-form OMC entry, which already covers this event's hooks.
+  const missingGroups = registeredScripts.has(null)
+    ? []
+    : newOmcGroups.filter(group => group.hooks.some(h => !registeredScripts.has(getStandaloneOmcHookFilename(h.command))));
+  log(missingGroups.length > 0 ? `  Added missing ${eventType} hook` : `  ${eventType} hook already configured, skipping`);
+  return [...existingGroups, ...missingGroups];
 }
 
 function readActiveAgentWitnesses(agentsDir: string): Map<string, Buffer> | null {
@@ -1162,6 +1272,7 @@ export function cleanupStaleAgents(log: (msg: string) => void): string[] {
   const agentEntries = listAgentDirectoryEntries(agentsDir);
   if (!agentEntries) return [];
 
+  const manifest = readManagedAssetManifest();
   const removed: string[] = [];
   for (const entry of agentEntries) {
     const file = entry.name;
@@ -1169,7 +1280,7 @@ export function cleanupStaleAgents(log: (msg: string) => void): string[] {
 
     const filepath = join(agentsDir, file);
     const candidate = readRegularAgentFile(filepath);
-    if (!candidate || !hasAuthenticatedHistoricalAgentBytes(file, candidate.content)) continue;
+    if (!candidate || !isRecordedOmcAgent(file, candidate.content, manifest)) continue;
 
     try {
       if (!hasUnchangedRegularAgentFile(filepath, candidate)) continue;
@@ -1197,6 +1308,7 @@ export function prunePluginDuplicateAgents(log: (msg: string) => void): string[]
   const agentEntries = listAgentDirectoryEntries(agentsDir);
   if (!agentEntries) return [];
 
+  const manifest = readManagedAssetManifest();
   const removed: string[] = [];
   for (const entry of agentEntries) {
     const file = entry.name;
@@ -1204,7 +1316,7 @@ export function prunePluginDuplicateAgents(log: (msg: string) => void): string[]
 
     const filepath = join(agentsDir, file);
     const candidate = readRegularAgentFile(filepath);
-    if (!candidate || !hasAuthenticatedHistoricalAgentBytes(file, candidate.content)) continue;
+    if (!candidate || !isRecordedOmcAgent(file, candidate.content, manifest)) continue;
 
     try {
       if (!hasUnchangedRegularAgentFile(filepath, candidate)) continue;
@@ -2316,6 +2428,11 @@ function syncBundledSkillDefinitions(log: (msg: string) => void, options?: { saf
       continue;
     }
 
+    if (targetStat && !isOmcManagedSkillDir(targetDir) && hashFileContents(join(targetDir, 'SKILL.md')) !== hashFileContents(sourceSkillPath)) {
+      log(`  Warning: ${targetDir} is a user-managed entry; the bundled skill was not installed. Remove or rename it to enable OMC's version.`);
+      continue;
+    }
+
     cpSync(sourceDir, targetDir, { recursive: true, force: true });
     markSkillAsOmcManaged(targetDir);
     installedSkills.push(relativePath.replace(/\\/g, '/'));
@@ -2597,16 +2714,24 @@ export function install(options: InstallOptions = {}): InstallResult {
       // Install agents
       if (shouldInstallLegacyAgents) {
         log('Installing agent definitions...');
+        const manifest = readManagedAssetManifest();
         for (const [filename, content] of Object.entries(loadAgentDefinitions())) {
           const filepath = join(AGENTS_DIR, filename);
-          if (existsSync(filepath) && !options.force) {
+          const manifestKey = `agents/${filename}`;
+          const shipped = Buffer.from(content);
+          const ownership = classifyStandaloneAsset(filepath, manifestKey, shipped, manifest, HISTORICAL_AGENT_HASHES_BY_FILENAME.get(filename));
+          if (ownership !== 'absent' && !options.force) {
             log(`  Skipping ${filename} (already exists)`);
+          } else if (ownership === 'user') {
+            log(`  Warning: ${filepath} is a user-managed entry; the bundled agent was not installed. Remove or rename it to enable OMC's version.`);
           } else {
-            writeFileSync(filepath, content);
+            writeFileSync(filepath, shipped);
+            manifest[manifestKey] = assetFingerprint(shipped);
             result.installedAgents.push(filename);
             log(`  Installed ${filename}`);
           }
         }
+        writeManagedAssetManifest(manifest, log);
       } else {
         log('Skipping legacy agent file installation (plugin-provided agents are available)');
         // Remove standalone copies that duplicate plugin-provided agents (#2252)
