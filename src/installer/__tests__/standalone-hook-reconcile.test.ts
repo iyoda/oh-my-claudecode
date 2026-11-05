@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -717,7 +718,11 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
   it('does not prune standalone hook files when plugin is not handling hooks', async () => {
     const hooksDir = join(testClaudeDir, 'hooks');
     mkdirSync(hooksDir, { recursive: true });
-    writeFileSync(join(hooksDir, 'keyword-detector.mjs'), 'legacy omc payload');
+    const previousPayload = Buffer.from('legacy omc payload');
+    writeFileSync(join(hooksDir, 'keyword-detector.mjs'), previousPayload);
+    writeFileSync(join(testClaudeDir, '.omc-managed-assets.json'), JSON.stringify({
+      'hooks/keyword-detector.mjs': `${previousPayload.length}:${createHash('sha256').update(previousPayload).digest('hex')}`,
+    }));
 
     const { install } = await loadInstaller();
     const result = install({ force: true, skipClaudeCheck: true });

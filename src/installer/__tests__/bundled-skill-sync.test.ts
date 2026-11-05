@@ -129,10 +129,25 @@ describe('install() bundled skill destination collisions', () => {
     expectCollisionWarning(logs, targetDir);
   });
 
-  it('force-copies bundled content and writes the marker into an existing real skill directory', async () => {
+  it('leaves an unmarked real directory with a different SKILL.md as the user wrote it', async () => {
+    const targetDir = skillTarget(COLLIDING_SKILL);
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(join(targetDir, 'SKILL.md'), 'user-authored content\n');
+
+    const { result, logs } = await installBundledSkills();
+
+    expect(result.success).toBe(true);
+    expect(result.installedSkills).not.toContain(`${COLLIDING_SKILL}/SKILL.md`);
+    expect(readFileSync(join(targetDir, 'SKILL.md'), 'utf8')).toBe('user-authored content\n');
+    expect(existsSync(join(targetDir, '.omc-managed'))).toBe(false);
+    expectCollisionWarning(logs, targetDir);
+  });
+
+  it('force-copies bundled content into an existing OMC-marked skill directory', async () => {
     const targetDir = skillTarget(COLLIDING_SKILL);
     mkdirSync(targetDir, { recursive: true });
     writeFileSync(join(targetDir, 'SKILL.md'), 'stale bundled content\n');
+    writeFileSync(join(targetDir, '.omc-managed'), 'omc-managed\n');
     writeFileSync(join(targetDir, 'stale-user-file.txt'), 'preserved by directory merge\n');
 
     const { result } = await installBundledSkills();

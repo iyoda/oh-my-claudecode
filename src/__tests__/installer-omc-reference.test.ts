@@ -254,6 +254,7 @@ describe('installer bundled + standalone skill sync', () => {
     const installedSkillDir = join(claudeConfigDir, 'skills', 'ultragoal');
     mkdirSync(installedSkillDir, { recursive: true });
     writeFileSync(join(installedSkillDir, 'SKILL.md'), 'name: ultragoal\n\nstale content\n');
+    writeFileSync(join(installedSkillDir, '.omc-managed'), 'omc-managed\n');
 
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({

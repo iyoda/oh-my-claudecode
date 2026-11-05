@@ -3,7 +3,7 @@
  * Tests hook conflict detection and forceHooks option
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -33,10 +33,14 @@ const TEST_CLAUDE_DIR = join(homedir(), '.claude-test-safe-installer');
 const TEST_SETTINGS_FILE = join(TEST_CLAUDE_DIR, 'settings.json');
 
 describe('isOmcHook', () => {
-  it('returns true for commands containing "omc"', () => {
-    expect(isOmcHook('node ~/.claude/hooks/omc-hook.mjs')).toBe(true);
-    expect(isOmcHook('bash $HOME/.claude/hooks/omc-detector.sh')).toBe(true);
-    expect(isOmcHook('/usr/bin/omc-tool')).toBe(true);
+  it('returns true for the omc binary and known hooks in the config hooks dir', () => {
+    expect(isOmcHook('/usr/local/bin/omc')).toBe(true);
+    expect(isOmcHook('node ~/.claude/hooks/keyword-detector.mjs')).toBe(true);
+  });
+
+  it('returns false for a user script whose name starts with omc', () => {
+    expect(isOmcHook('node ~/.claude/hooks/omc-hook.mjs')).toBe(false);
+    expect(isOmcHook('bash $HOME/.claude/hooks/omc-detector.sh')).toBe(false);
   });
 
   it('returns true for commands containing "oh-my-claudecode"', () => {
@@ -51,16 +55,18 @@ describe('isOmcHook', () => {
   });
 
   it('is case-insensitive', () => {
-    expect(isOmcHook('node ~/.claude/hooks/OMC-hook.mjs')).toBe(true);
+    expect(isOmcHook('node ~/.claude/hooks/KEYWORD-DETECTOR.mjs')).toBe(true);
     expect(isOmcHook('bash $HOME/.claude/hooks/OH-MY-CLAUDECODE.sh')).toBe(true);
   });
 });
 
 describe('isOmcHook detection', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('detects real OMC hooks correctly', () => {
-    expect(isOmcHook('node ~/.claude/hooks/omc-hook.mjs')).toBe(true);
     expect(isOmcHook('node ~/.claude/hooks/oh-my-claudecode-hook.mjs')).toBe(true);
-    expect(isOmcHook('node ~/.claude/hooks/omc-pre-tool-use.mjs')).toBe(true);
     expect(isOmcHook('/usr/local/bin/omc')).toBe(true);
   });
 
@@ -75,6 +81,7 @@ describe('isOmcHook detection', () => {
   });
 
   it('detects custom-profile OMC hook commands by hook filename', () => {
+    vi.stubEnv('CLAUDE_CONFIG_DIR', '/tmp/custom-claude');
     expect(isOmcHook('node "/tmp/custom-claude/hooks/keyword-detector.mjs"')).toBe(true);
   });
 
@@ -97,7 +104,7 @@ describe('isOmcHook detection', () => {
   });
 
   it('uses case-insensitive matching', () => {
-    expect(isOmcHook('node ~/.claude/hooks/OMC-hook.mjs')).toBe(true);
+    expect(isOmcHook('node ~/.claude/hooks/KEYWORD-DETECTOR.mjs')).toBe(true);
     expect(isOmcHook('OH-MY-CLAUDECODE-detector.sh')).toBe(true);
   });
 });
